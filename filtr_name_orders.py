@@ -6,8 +6,8 @@ import re, sys
 # pip install pandas
 
 min_price = 50000
-usr = 'vokulovskiy'
-pwd = 'OsPl27FLJC7c8N6t'
+usr = 'user'
+pwd = 'password'
 host = '212.24.35.176'
 port = 10573
 
