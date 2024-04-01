@@ -1,15 +1,21 @@
-import psycopg2
+import psycopg2 as pg2
 import pandas as pd
 import re, sys
+from keys.my_secret import my_secret as ms
 
 # pip install psycopg2-binary
 # pip install pandas
 
 min_price = 50000
-usr = 'user'
-pwd = 'password'
-host = '212.24.35.176'
-port = 10573
+
+# Получение соединения с БД
+def get_my_pg_connection():
+    host = ms['host']
+    port = ms['port']
+    database = ms['database']
+    user = ms['username']
+    password = ms['password']
+    return pg2.connect(host=host, port=port, database=database, user=user, password=password)
 
 def search_keys(text, keys):
     '''
@@ -24,14 +30,14 @@ def search_keys(text, keys):
 
 try:
     # пытаемся подключиться к базе данных
-    conn = psycopg2.connect(dbname='attractor-raw', user=usr, password=pwd, host=host, port=port)
+    conn = get_my_pg_connection()
     print('Connected!')
 except:
     # в случае сбоя подключения будет выведено сообщение  в STDOUT
     print('Can`t establish connection to database')
     sys.exit()
 
-conn.autocommit = True  # устанавливаем актокоммит
+conn.autocommit = True  # устанавливаем автокоммит
 
 df_db = pd.read_sql("SELECT sk,title,price,fit FROM gz44_ord WHERE fit=0", conn)
 df_keys = pd.read_csv('key_words.csv',delimiter=';')
