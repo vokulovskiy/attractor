@@ -44,6 +44,9 @@ def get_doc(path_in_file, url):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 YaBrowser/23.11.0.0 Safari/537.36'
         }
     res = req.get(url, headers = headers, timeout = 30)
+    if len(path_in_file)>127: #обрезаем слишком длинное название файла
+        ext = path_in_file.split('.')[-1]
+        path_in_file=path_in_file[:127-len(ext)]+'.'+ext
     with open(path_in_file, 'wb') as f:
         f.write(res.content)
     
@@ -85,16 +88,24 @@ def get_ord_docs(url):
     return ord_data
 
 def doc2txt(path):
-    doc = aw.Document(path).get_text()
-    s = re.sub('[\x07\x0b\x13HYPERLINK]', ' ', doc).split('\r')
-    return '\n'.join([i.strip() for i in s if len(i.strip())>0][1:-1]) 
+    try:
+        doc = aw.Document(path).get_text()
+        s = re.sub('[\x07\x0b\x13\x00\x14\x15HYPERLINK]', ' ', doc).split('\r')
+        s = '\n'.join([i.strip() for i in s if len(i.strip())>0][1:-1])
+    except:
+        s = ''
+    return  s
 
 def pdf2txt(fname):
-    with pdfplumber.open(fname) as pdf:
-        if len(pdf.pages):
-            text_o = ' '.join([
-                page.extract_text() or '' for page in pdf.pages if page
-            ])
+    text_o = ''
+    try:
+        with pdfplumber.open(fname) as pdf:
+            if len(pdf.pages):
+                text_o = ' '.join([
+                    page.extract_text() or '' for page in pdf.pages if page
+                ])
+    except:
+        pass
     return text_o
 
 def xls2txt(fname):
@@ -106,24 +117,24 @@ def zip2dir(fname):
     # Загрузить архив
     with az.Archive(fname) as archive:
 	    # Извлечь файл 
-        fn = os.path.basename(fname)
-        archive.extract_to_directory(os.path.join(path_temp, fn))
+        fn = os.path.basename(fname)+'_'
+        archive.extract_to_directory(path_temp)
 
 def rar2dir(fname):
     # Загрузить архив
     with az.rar.RarArchive(fname) as archive:
         # Извлечь файл 
-        fn = os.path.basename(fname)
-        archive.extract_to_directory(os.path.join(path_temp, fn))
+        fn = os.path.basename(fname)+'_'
+        archive.extract_to_directory(path_temp)
 
 def to_txt(path):
     txt_from_files = {}
     for root, dirs, files in os.walk(path):
         #print(f'{root=}, {dirs=}, {files=}')
         for fn in files:
-            ext = fn.split('.')[-1]
+            ext = fn.split('.')[-1].lower()
             ffn = os.path.join(root, fn)
-            if ext in ['doc','docx']:
+            if ext in ['doc','docx','rtf','odt']:
                 txt_from_files[ffn] = doc2txt(ffn)
             elif ext=='txt':
                 with open(ffn,'r') as f:
@@ -132,11 +143,18 @@ def to_txt(path):
                 txt_from_files[ffn] = xls2txt(ffn)
             elif ext=='pdf':
                 txt_from_files[ffn] = pdf2txt(ffn)
-            elif ext=='rar':
+    return txt_from_files
+
+def from_archive(path):
+    for root, dirs, files in os.walk(path):
+        #print(f'{root=}, {dirs=}, {files=}')
+        for fn in files:
+            ext = fn.split('.')[-1].lower()
+            ffn = os.path.join(root, fn)
+            if ext=='rar':
                 rar2dir(ffn)
             elif ext=='zip':
                 zip2dir(ffn)
-    return txt_from_files
 
 def clear_temp(path_temp):# Очистка временной папки
     if os.path.exists(path_temp): 
@@ -185,7 +203,7 @@ def get_my_pg_connection():
 path_root = r'/mnt/c/temp/'
 
 path_temp = "temp"
-keywords = [r"\bтехническ.. задан*",  "описание объекта закупки"]
+keywords = [r"техническ...задан", r"тех.{1,2}задан", r"техзадан", r"\bтз\b", r"описание.объекта.закупк", r"описание.оз", r"\bооз\b"]
 
 try:
     # пытаемся подключиться к базе данных
@@ -211,11 +229,13 @@ with conn.cursor() as curs:
         clear_temp(path_temp)
         txt = ''
         detected = False
-        print(row.sk)
+        print(row.url)
         # Проверяем ТЗ в названии файла
         for fname, url in ord_docs.items():
             if sum([len(re.findall (k, os.path.basename(fname).lower())) for k in keywords]) > 0:
                 get_doc(f'{path_temp}/{fname}', url)
+                from_archive(path_temp) # Извлекаем файлы из архивов
+                from_archive(path_temp) # Извлекаем файлы из архивов
                 txt = to_txt(f'{path_temp}')
                 txt = txt[next(iter(txt))]
                 detected = True
@@ -228,6 +248,9 @@ with conn.cursor() as curs:
             for fname, url in ord_docs.items():
                 path = f'{path_temp}/{fname}'
                 get_doc(path, url)
+            from_archive(path_temp) # Извлекаем файлы из архивов
+            from_archive(path_temp) # Извлекаем файлы из архивов
+            # Извлекаем тексты из файлов
             txt_from_files = to_txt(path_temp)
             #clear_temp(path_temp)
             file_tz = find_nearest_file(txt_from_files, keywords)
@@ -241,7 +264,10 @@ with conn.cursor() as curs:
             print()
         if detected and len(txt.strip())>0:
             row.fit=3
+            txt = txt.replace("'",'"')
             sql = f"INSERT INTO long_strings (gz44_ord_sk, tz) VALUES ({row.sk}, '{txt}');"
+            # with open('temp.txt','w') as f:
+            #     f.write(txt)
             curs.execute(sql)
         else:
             row.fit=-3
