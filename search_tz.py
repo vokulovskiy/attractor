@@ -79,9 +79,6 @@ def get_ord_docs(url):
     except: conn_error(10)
     if response.status_code != 200: conn_error(20)
 
-    with open('temp.txt','w') as f:
-        print(response.text,file=f)
-        
     soup = bs(response.text, 'html.parser')
 
     ord_data = {doc.find('a')['title']:doc.find('a')['href'] for doc in soup.findAll('span', class_='section__value')}
@@ -255,12 +252,13 @@ with conn.cursor() as curs:
             #clear_temp(path_temp)
             file_tz = find_nearest_file(txt_from_files, keywords)
             if file_tz:
-                print(f'Техническое задание из каталога {path} с наибольшей вероятностью содержится в файле: {file_tz}')
+                print(f'Техническое задание с наибольшей вероятностью содержится в файле: {file_tz}')
                 print(txt_from_files[file_tz][:200])
                 txt = txt_from_files[file_tz]
                 detected = True
             else:
-                print(f'Техническое задание из каталога {path} не найдено')
+                print(f'Техническое задание не найдено')
+                row.fit=-3
             print()
         if detected and len(txt.strip())>0:
             row.fit=3
